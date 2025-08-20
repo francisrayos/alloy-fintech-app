@@ -179,8 +179,36 @@ export default function HomePage() {
   }
 
   const validateForm = (): string | null => {
+    const firstName = formData.name_first || ""
+    const lastName = formData.name_last || ""
+
+    if ((firstName && !lastName) || (!firstName && lastName)) {
+      return "Both first name and last name must be filled out to proceed"
+    }
+
     for (const [fieldName, fieldConfig] of Object.entries(parameters)) {
       const value = formData[fieldName] || ""
+
+      // Check country validation
+      if (fieldName.includes("country") && value && value !== "US") {
+        return 'Country input must be "US"'
+      }
+
+      // Check SSN validation
+      if (fieldName.includes("ssn") && value) {
+        const ssnPattern = /^\d{9}$/
+        if (!ssnPattern.test(value)) {
+          return "SSN format must be 9 digits, no dashes"
+        }
+      }
+
+      // Check state validation
+      if (fieldName.includes("state") && value) {
+        const statePattern = /^[A-Z]{2}$/
+        if (!statePattern.test(value)) {
+          return "State format must be a two letter code"
+        }
+      }
 
       // Check date format for birth_date or date fields
       if ((fieldName.includes("birth_date") || fieldName.includes("date")) && value) {
@@ -284,10 +312,17 @@ export default function HomePage() {
       })
 
       if (!apiResponse.ok) {
-        throw new Error("Failed to submit application")
+        const errorText = await apiResponse.text()
+        console.log("API Error:", apiResponse.status, errorText)
+        throw new Error(`API request failed with status ${apiResponse.status}`)
       }
 
       const result: ApiResponse = await apiResponse.json()
+
+      if (!result || !result.summary || !result.application_token) {
+        console.log("Invalid response structure:", result)
+        throw new Error("Invalid response format from API")
+      }
 
       console.log("Frontend received outcome:", result.summary?.outcome)
       if (result.summary?.outcome === "Deny") {
@@ -296,7 +331,8 @@ export default function HomePage() {
 
       setResponse(result)
     } catch (err) {
-      setError("Failed to submit application. Please try again.")
+      console.log("Form submission error:", err)
+      setError("Failed to submit application. Please check your information and try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -439,7 +475,18 @@ export default function HomePage() {
           <Card className="shadow-xl border-0 overflow-hidden">
             {response ? (
               <CardContent className="pt-6">
-                {renderOutcomeScreen(response.summary.outcome, response.application_token)}
+                {response.summary?.outcome && response.application_token ? (
+                  renderOutcomeScreen(response.summary.outcome, response.application_token)
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-lg text-muted-foreground mb-6">
+                      Application submitted successfully, but response format was unexpected.
+                    </p>
+                    <Button onClick={() => setResponse(null)} variant="outline">
+                      Submit Another Application
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             ) : (
               <>
@@ -460,18 +507,16 @@ export default function HomePage() {
                     {addressFields.length > 0 && (
                       <div className="space-y-4">
                         {addressFields.map(([fieldName, fieldConfig]) => {
-                          // Special layout for city, state, zip
                           if (
                             fieldName.includes("city") ||
                             fieldName.includes("state") ||
                             fieldName.includes("postal")
                           ) {
-                            return null // Handle these in a group below
+                            return null
                           }
                           return renderFormField(fieldName, fieldConfig)
                         })}
 
-                        {/* City, State, Zip in a row */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {addressFields
                             .filter(
@@ -488,7 +533,6 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* Error Display */}
                     {error && (
                       <Alert variant="destructive">
                         <XCircle className="h-4 w-4" />
@@ -496,7 +540,6 @@ export default function HomePage() {
                       </Alert>
                     )}
 
-                    {/* Submit Button */}
                     <Button
                       type="submit"
                       className="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-semibold py-3 text-lg shadow-lg"
